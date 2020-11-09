@@ -7,13 +7,17 @@
 struct Ray {
     parser::Vec3f origin;
     parser::Vec3f direction;
+    Ray(parser::Vec3f o, parser::Vec3f d){origin=o; direction=d;}
 };
 
 struct Color {
     int r, g, b;
+    Color(){r=g=b=0;}
+    Color(int i, int j, int k){r=i; g=j; b=k;}
 };
 
 
+// add operation for two vectors
 parser::Vec3f addOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 
     parser::Vec3f result;
@@ -25,6 +29,7 @@ parser::Vec3f addOp(parser::Vec3f vect, parser::Vec3f otherVect) {
     return result;
 }
 
+// subtract operation for two vectors
 parser::Vec3f subtOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 
     parser::Vec3f result;
@@ -36,7 +41,7 @@ parser::Vec3f subtOp(parser::Vec3f vect, parser::Vec3f otherVect) {
     return result;
 }
 
-
+// scalar multiplication operation with a vector and a constant
 parser::Vec3f scalarMultOp(parser::Vec3f vect, float num) {
 
     parser::Vec3f result;
@@ -48,6 +53,7 @@ parser::Vec3f scalarMultOp(parser::Vec3f vect, float num) {
     return result;
 }
 
+// cross product of two vectors
 parser::Vec3f crossProductOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 
     parser::Vec3f result;
@@ -59,6 +65,7 @@ parser::Vec3f crossProductOp(parser::Vec3f vect, parser::Vec3f otherVect) {
     return result;
 }
 
+// dot product of two vectors
 double dotProductOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 
     double result = (vect.x * otherVect.x) + (vect.y + otherVect.y) + (vect.z + otherVect.z);
@@ -66,6 +73,7 @@ double dotProductOp(parser::Vec3f vect, parser::Vec3f otherVect) {
     return result;
 }
 
+// func to get the normalized vector
 parser::Vec3f normalOp(parser::Vec3f vect) {
 
     double len = sqrt(dotProductOp(vect, vect));
@@ -78,10 +86,10 @@ parser::Vec3f normalOp(parser::Vec3f vect) {
     return resultVect;
 }
 
-
+// func that computes irradience
 parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
 
-    float r2 = dotProductOp(w_ii, w_i);
+    float r2 = dotProductOp(w_i, w_i);
 
     parser::Vec3f E;
     E.x = I.x / r2;
@@ -91,8 +99,7 @@ parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
     return E;
 }
 
-
-
+// func to do clamping
 parser::Vec3f clamping(parser::Vec3f L) {
 
     if(L.x > 255)
@@ -115,12 +122,25 @@ parser::Vec3f clamping(parser::Vec3f L) {
 void rayTracing(Ray ray, Color* pixelColor) {
 
 }
+
+
+// YAZILACAK MUHTEMEL FONKILER
+//
+// getSpheresNormal
+// ifSphereIntersect
+// computeRay
+// 
+
 int main(int argc, char* argv[])
 {
     
     parser::Scene scene;
     scene.loadFromXml(argv[1]);
 
+    for (int cam=0; cam<scene.cameras.size(); cam++){
+        ;
+    }
+    
 
     return 0;
 
