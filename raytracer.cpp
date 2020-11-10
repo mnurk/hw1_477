@@ -86,6 +86,50 @@ parser::Vec3f normalOp(parser::Vec3f vect) {
     return resultVect;
 }
 
+parser::Vec3f computeRay(parser::Camera camera, parser::Vec3f s /*pixel coordinates*/) {
+
+    Ray theRay;
+    theRay.origin.x = camera.position.x;
+    theRay.origin.y = camera.position.y;
+    theRay.origin.z = camera.position.z;
+
+    theRay.direction.x = s.x - camera.position.x;
+    theRay.direction.y = s.y - camera.position.y;
+    theRay.direction.z = s.z - camera.position.z;
+
+    return theRay;
+
+}
+
+/*
+parser::Vec3f computeRay(parser::Camera camera) {
+
+    parser::Vec3f m;
+    m.x = camera.position.x + camera.gaze.x * camera.near_distance;
+    m.y = camera.position.y + camera.gaze.y * camera.near_distance;
+    m.z = camera.position.z + camera.gaze.z * camera.near_distance;
+
+    parser::Vec3f u = crossProductOp(camera.up, /* opposite of gaze (camera.gaze));
+    parser::Vec3f q;
+    q.x = m.x + ;
+    q.y = camera.position.y + camera.gaze.y * camera.near_distance;
+    q.z = camera.position.z + camera.gaze.z * camera.near_distance;
+
+    //------------------
+    Ray theRay;
+    theRay.origin.x = camera.position.x;
+    theRay.origin.y = camera.position.y;
+    theRay.origin.z = camera.position.z;
+
+    theRay.direction.x = s.x - camera.position.x;
+    theRay.direction.y = s.y - camera.position.y;
+    theRay.direction.z = s.z - camera.position.z;
+    //--------------------
+    return theRay;
+
+}
+*/
+
 // func that computes irradience
 parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
 
