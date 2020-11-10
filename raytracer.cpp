@@ -3,10 +3,19 @@
 #include "ppm.h"
 #include "math.h"
 
+#define EPSILON 0.0001
+
+parser::Scene scene;
 
 struct Ray {
     parser::Vec3f origin;
     parser::Vec3f direction;
+    Ray(){
+        parser::Vec3f o, d;
+        o.x = o.y = o.z = d.x = d.y = d.z = 0.0;
+        origin = o;
+        direction = d;
+    }
     Ray(parser::Vec3f o, parser::Vec3f d){origin=o; direction=d;}
 };
 
@@ -86,49 +95,10 @@ parser::Vec3f normalOp(parser::Vec3f vect) {
     return resultVect;
 }
 
-parser::Vec3f computeRay(parser::Camera camera, parser::Vec3f s /*pixel coordinates*/) {
-
-    Ray theRay;
-    theRay.origin.x = camera.position.x;
-    theRay.origin.y = camera.position.y;
-    theRay.origin.z = camera.position.z;
-
-    theRay.direction.x = s.x - camera.position.x;
-    theRay.direction.y = s.y - camera.position.y;
-    theRay.direction.z = s.z - camera.position.z;
-
-    return theRay;
-
+// func to return the length of a 3D vector.
+double lengthOfVector(parser::Vec3f vect){
+    return sqrt(dotProductOp(vect, vect));
 }
-
-/*
-parser::Vec3f computeRay(parser::Camera camera) {
-
-    parser::Vec3f m;
-    m.x = camera.position.x + camera.gaze.x * camera.near_distance;
-    m.y = camera.position.y + camera.gaze.y * camera.near_distance;
-    m.z = camera.position.z + camera.gaze.z * camera.near_distance;
-
-    parser::Vec3f u = crossProductOp(camera.up, /* opposite of gaze (camera.gaze));
-    parser::Vec3f q;
-    q.x = m.x + ;
-    q.y = camera.position.y + camera.gaze.y * camera.near_distance;
-    q.z = camera.position.z + camera.gaze.z * camera.near_distance;
-
-    //------------------
-    Ray theRay;
-    theRay.origin.x = camera.position.x;
-    theRay.origin.y = camera.position.y;
-    theRay.origin.z = camera.position.z;
-
-    theRay.direction.x = s.x - camera.position.x;
-    theRay.direction.y = s.y - camera.position.y;
-    theRay.direction.z = s.z - camera.position.z;
-    //--------------------
-    return theRay;
-
-}
-*/
 
 // func that computes irradience
 parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
@@ -168,17 +138,108 @@ void rayTracing(Ray ray, Color* pixelColor) {
 }
 
 
-// YAZILACAK MUHTEMEL FONKILER
-//
-// getSpheresNormal
-// ifSphereIntersect
-// computeRay
-// 
+// if ray intersects with the sphere.
+// gets ray, the sphere and t(intersection point, as reference), returns bool.
+bool ifSphereIntersect(Ray ray, parser::Sphere sphere, double& t){
+    parser::Vec3f o = ray.origin;
+    parser::Vec3f d = normalOp(ray.direction);
+    parser::Vec3f center = scene.vertex_data[sphere.center_vertex_id];
+    float r = sphere.radius;
+    parser::Vec3f L = subtOp(center, o);
+    double t_ca = dotProductOp(L, d);
+    
+    if (t_ca < 0) return false;
+    
+    double d_squared = dotProductOp(L, L) - t_ca * t_ca;
+    
+    if (d_squared > r*r) return false;
+    
+    double t_hc = sqrt(r*r - d_squared);
+    
+    double t_0 = t_ca - t_hc;
+    double t_1 = t_ca + t_hc;
+    
+    t = (t_0 < t_1) ? t_0 : t_1;
+    
+    return true;
+}
+
+// takes the ray, vertices of triangle and t(intersection point, as reference), returns bool.
+bool ifTriangleIntersect(Ray ray, parser::Vec3f v_0, parser::Vec3f v_1, parser::Vec3f v_2, double& t){
+    parser::Vec3f v0v1 = subtOp(v_1, v_0);
+    parser::Vec3f v0v2 = subtOp(v_2, v_0);
+    parser::Vec3f dirxside = crossProductOp(ray.direction, v0v2);
+    double determinant = dotProductOp(v0v1, dirxside);
+    
+//    negative determinant => triangle is backfacing
+    if (determinant < EPSILON) return false;
+//    if the determinant is close to 0, the ray misses the triangle
+    if (fabs(determinant) < EPSILON) return false;
+    
+    double inv_determinant = 1/determinant;
+    
+    parser::Vec3f v0_to_o = subtOp(ray.origin, v_0);
+    double gamma = dotProductOp(v0_to_o, dirxside) * inv_determinant;
+    if (gamma < 0) return false;
+    if (gamma > 1) return false;
+    
+    parser::Vec3f xvec = crossProductOp(v0_to_o, v0v1);
+    double beta = dotProductOp(ray.direction, xvec) * inv_determinant;
+    if (beta < 0) return false;
+    if (beta + gamma > 1) return false;
+    
+    double temp = dotProductOp(v0v2, xvec) * inv_determinant;
+    
+    if (temp < EPSILON) return false;
+    
+    t = temp;
+    
+    return true;
+}
+
+// mnurk - generates ray from the camera to pixel.
+Ray computeRay(parser::Camera camera, parser::Vec3f s /*pixel coordinates*/) {
+
+    Ray theRay;
+    theRay.origin.x = camera.position.x;
+    theRay.origin.y = camera.position.y;
+    theRay.origin.z = camera.position.z;
+
+    theRay.direction.x = s.x - camera.position.x;
+    theRay.direction.y = s.y - camera.position.y;
+    theRay.direction.z = s.z - camera.position.z;
+
+    return theRay;
+}
+
+/*
+parser::Vec3f computeRay(parser::Camera camera) {
+    parser::Vec3f m;
+    m.x = camera.position.x + camera.gaze.x * camera.near_distance;
+    m.y = camera.position.y + camera.gaze.y * camera.near_distance;
+    m.z = camera.position.z + camera.gaze.z * camera.near_distance;
+    parser::Vec3f u = crossProductOp(camera.up, /* opposite of gaze (camera.gaze));
+    parser::Vec3f q;
+    q.x = m.x + ;
+    q.y = camera.position.y + camera.gaze.y * camera.near_distance;
+    q.z = camera.position.z + camera.gaze.z * camera.near_distance;
+    //------------------
+    Ray theRay;
+    theRay.origin.x = camera.position.x;
+    theRay.origin.y = camera.position.y;
+    theRay.origin.z = camera.position.z;
+    theRay.direction.x = s.x - camera.position.x;
+    theRay.direction.y = s.y - camera.position.y;
+    theRay.direction.z = s.z - camera.position.z;
+    //--------------------
+    return theRay;
+}
+*/
+
 
 int main(int argc, char* argv[])
 {
     
-    parser::Scene scene;
     scene.loadFromXml(argv[1]);
 
     for (int cam=0; cam<scene.cameras.size(); cam++){
@@ -187,6 +248,4 @@ int main(int argc, char* argv[])
     
 
     return 0;
-
-    
 }
