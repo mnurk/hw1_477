@@ -147,20 +147,20 @@ bool ifSphereIntersect(Ray ray, parser::Sphere sphere, double& t){
     float r = sphere.radius;
     parser::Vec3f L = subtOp(center, o);
     double t_ca = dotProductOp(L, d);
-    
+
     if (t_ca < 0) return false;
-    
+
     double d_squared = dotProductOp(L, L) - t_ca * t_ca;
-    
+
     if (d_squared > r*r) return false;
-    
+
     double t_hc = sqrt(r*r - d_squared);
-    
+
     double t_0 = t_ca - t_hc;
     double t_1 = t_ca + t_hc;
-    
+
     t = (t_0 < t_1) ? t_0 : t_1;
-    
+
     return true;
 }
 
@@ -170,71 +170,63 @@ bool ifTriangleIntersect(Ray ray, parser::Vec3f v_0, parser::Vec3f v_1, parser::
     parser::Vec3f v0v2 = subtOp(v_2, v_0);
     parser::Vec3f dirxside = crossProductOp(ray.direction, v0v2);
     double determinant = dotProductOp(v0v1, dirxside);
-    
+
 //    negative determinant => triangle is backfacing
     if (determinant < EPSILON) return false;
 //    if the determinant is close to 0, the ray misses the triangle
     if (fabs(determinant) < EPSILON) return false;
-    
+
     double inv_determinant = 1/determinant;
-    
+
     parser::Vec3f v0_to_o = subtOp(ray.origin, v_0);
     double gamma = dotProductOp(v0_to_o, dirxside) * inv_determinant;
     if (gamma < 0) return false;
     if (gamma > 1) return false;
-    
+
     parser::Vec3f xvec = crossProductOp(v0_to_o, v0v1);
     double beta = dotProductOp(ray.direction, xvec) * inv_determinant;
     if (beta < 0) return false;
     if (beta + gamma > 1) return false;
-    
+
     double temp = dotProductOp(v0v2, xvec) * inv_determinant;
-    
+
     if (temp < EPSILON) return false;
-    
+
     t = temp;
-    
+
     return true;
 }
 
-// mnurk - generates ray from the camera to pixel.
-Ray computeRay(parser::Camera camera, parser::Vec3f s /*pixel coordinates*/) {
-
+// func to generate ray from camera to any pixel given.
+Ray generateRay(int i, int j, int camera_index){
     Ray theRay;
-    theRay.origin.x = camera.position.x;
-    theRay.origin.y = camera.position.y;
-    theRay.origin.z = camera.position.z;
+    parser::Vec3f e = scene.cameras[camera_index].position;
+    parser::Vec3f v = scene.cameras[camera_index].up;
+    parser::Vec3f w = scalarMultOp(scene.cameras[camera_index].gaze, -1.0);
+    parser::Vec3f u = crossProductOp(w, v);
+//    burada x,y,z,w'nin hangisi left, right, bottom ve top olduguna pdf'e gore karar verdim ins dogrudur.
+    float l = scene.cameras[camera_index].near_plane.x, r = scene.cameras[camera_index].near_plane.y;
+    float b = scene.cameras[camera_index].near_plane.z, t = scene.cameras[camera_index].near_plane.w;
 
-    theRay.direction.x = s.x - camera.position.x;
-    theRay.direction.y = s.y - camera.position.y;
-    theRay.direction.z = s.z - camera.position.z;
+    parser::Vec3f minus_w_dist = scalarMultOp(w, scene.cameras[camera_index].near_distance * -1.0);
+    parser::Vec3f m = addOp(e, minus_w_dist);
 
+    parser::Vec3f lu = scalarMultOp(u, l);
+    parser::Vec3f tv = scalarMultOp(v, t);
+    parser::Vec3f q = addOp(m, addOp(lu, tv));
+    
+    double s_u = (i+0.5)*((r-l)/scene.cameras[camera_index].image_width);
+    double s_v = (j+0.5)*((t-b)/scene.cameras[camera_index].image_height);
+    parser::Vec3f s_uxu = scalarMultOp(u, s_u);
+    parser::Vec3f min_s_vxv = scalarMultOp(v, -1.0 * s_v);
+    parser::Vec3f s = addOp(q, addOp(s_uxu, min_s_vxv));
+    
+    parser::Vec3f d = subtOp(s, e);
+    theRay.origin = e;
+    theRay.direction = normalOp(d);
+    
     return theRay;
 }
-
-/*
-parser::Vec3f computeRay(parser::Camera camera) {
-    parser::Vec3f m;
-    m.x = camera.position.x + camera.gaze.x * camera.near_distance;
-    m.y = camera.position.y + camera.gaze.y * camera.near_distance;
-    m.z = camera.position.z + camera.gaze.z * camera.near_distance;
-    parser::Vec3f u = crossProductOp(camera.up, /* opposite of gaze (camera.gaze));
-    parser::Vec3f q;
-    q.x = m.x + ;
-    q.y = camera.position.y + camera.gaze.y * camera.near_distance;
-    q.z = camera.position.z + camera.gaze.z * camera.near_distance;
-    //------------------
-    Ray theRay;
-    theRay.origin.x = camera.position.x;
-    theRay.origin.y = camera.position.y;
-    theRay.origin.z = camera.position.z;
-    theRay.direction.x = s.x - camera.position.x;
-    theRay.direction.y = s.y - camera.position.y;
-    theRay.direction.z = s.z - camera.position.z;
-    //--------------------
-    return theRay;
-}
-*/
 
 
 int main(int argc, char* argv[])
