@@ -101,6 +101,7 @@ double lengthOfVector(parser::Vec3f vect){
 }
 
 // func that computes irradience
+/*
 parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
 
     float r2 = dotProductOp(w_i, w_i);
@@ -111,7 +112,7 @@ parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
     E.z = I.z / r2;
 
     return E;
-}
+}*/
 
 // func to do clamping
 parser::Vec3f clamping(parser::Vec3f L) {
@@ -228,6 +229,59 @@ Ray generateRay(int i, int j, int camera_index){
     return theRay;
 }
 
+
+                                              //normal vector, light_id, material_id
+parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M_id) {
+
+    parser::Vec3f L_d;
+    float cos_theta = dotProductOp(wi, n);
+    parser::Vec3f k_d = scene.materials[M_id].diffuse;
+    parser::Vec3f I = scene.point_lights[L_id].intensity;
+    parser::Vec3f r = scene.point_lights[L_id].position;
+
+    parser::Vec3f E = scalarMultOp(I, 1/(r**2));
+    L_d.x = k_d.x * E.x;
+    L_d.y = k_d.y * E.y;
+    L_d.z = k_d.z * E.z;
+    L_d = scalarMultOp(L_d, cos_theta);
+
+    return L_d;
+}
+
+parser::Vec3f ambient_shading(int M_id) {
+
+    parser::Vec3f L_a;
+    parser::Vec3f k_a = scene.materials[M_id].ambient;
+    parser::Vec3f I_a = scene.ambient_light;
+
+    L_a.x = k_a.x * I_a.x;
+    L_a.y = k_a.y * I_a.y;
+    L_a.z = k_a.z * I_a.z;
+
+    return L_a;
+}
+
+parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f n, int L_id, int M_id) {
+
+    parser::Vec3f L_s;
+    parser::Vec3f half_vector = normalOp(addOp(wi, wo));
+    float cos_alpha = dotProductOp(h, n);
+
+    parser::Vec3f k_s = scene.materials[M_id].specular;
+    parser::Vec3f I = scene.point_lights[L_id].intensity;
+    parser::Vec3f r = scene.point_lights[L_id].position;
+    parser::Vec3f E = scalarMultOp(I, 1/(r**2));
+    float phong_exponent = scene.materials[M_id].phong_exponent;
+
+    cos_alpha = cos_alpha ** phong_exponent;
+
+    L_s.x = k_s.x * E.x;
+    L_s.y = k_s.y * E.y;
+    L_s.z = k_s.z * E.z;
+    L_s = scalarMultOp(L_s, cos_alpha);
+
+    return L_s;
+}
 
 int main(int argc, char* argv[])
 {
