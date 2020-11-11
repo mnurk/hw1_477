@@ -283,6 +283,20 @@ parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f
     return L_s;
 }
 
+parser::Vec3f mirror_sth(parser::Vec3f x /*intersection point*/, parser::Vec3f wo, parser::Vec3f n, int M_id /*material_id*/) {
+
+    parser::Vec3f L_m;
+    parser::Vec3f k_m = scene.materials[M_id].mirror;
+
+    parser::Vec3f wr;
+    wr = addOp(scalarMultOp(wo, -1), scalarMultOp(dotProductOp(wo, n), scalarMultOp(n, 2)));
+
+    Ray mirrorRay = Ray(x + scene.shadow_ray_epsilon, wr);
+
+    //to be continued..
+
+}
+
 int main(int argc, char* argv[])
 {
     
