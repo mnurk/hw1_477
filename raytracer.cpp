@@ -101,7 +101,6 @@ double lengthOfVector(parser::Vec3f vect){
 }
 
 // func that computes irradience
-/*
 parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
 
     float r2 = dotProductOp(w_i, w_i);
@@ -112,7 +111,7 @@ parser::Vec3f findE(parser::Vec3f w_i, parser::Vec3f I) {
     E.z = I.z / r2;
 
     return E;
-}*/
+}
 
 // func to do clamping
 parser::Vec3f clamping(parser::Vec3f L) {
@@ -149,7 +148,7 @@ bool ifSphereIntersect(Ray ray, parser::Sphere sphere, double& t){
     parser::Vec3f L = subtOp(center, o);
     double t_ca = dotProductOp(L, d);
 
-    if (t_ca < 0) return false;
+    if (t_ca < EPSILON) return false;
 
     double d_squared = dotProductOp(L, L) - t_ca * t_ca;
 
@@ -215,31 +214,43 @@ Ray generateRay(int i, int j, int camera_index){
     parser::Vec3f lu = scalarMultOp(u, l);
     parser::Vec3f tv = scalarMultOp(v, t);
     parser::Vec3f q = addOp(m, addOp(lu, tv));
-    
+
     double s_u = (i+0.5)*((r-l)/scene.cameras[camera_index].image_width);
     double s_v = (j+0.5)*((t-b)/scene.cameras[camera_index].image_height);
     parser::Vec3f s_uxu = scalarMultOp(u, s_u);
     parser::Vec3f min_s_vxv = scalarMultOp(v, -1.0 * s_v);
     parser::Vec3f s = addOp(q, addOp(s_uxu, min_s_vxv));
-    
+
     parser::Vec3f d = subtOp(s, e);
     theRay.origin = e;
     theRay.direction = normalOp(d);
-    
+
     return theRay;
 }
 
 
                                               //normal vector, light_id, material_id
-parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M_id) {
+                                    // wi is defined from the surface to the light
+// hit_coord is the 3D coordinate on the surface where we operate on (x in slides). It can be computed, hopefully, using
+// the main ray and t.
+parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M_id, parser::Vec3f hit_coord) {
 
     parser::Vec3f L_d;
-    float cos_theta = dotProductOp(wi, n);
+    float cos_theta = dotProductOp(normalOp(wi), normalOp(n));
+    if (cos_theta < 0){
+        L_d.x = 0;
+        L_d.y = 0;
+        L_d.z = 0;
+        return L_d;
+    }
+    
     parser::Vec3f k_d = scene.materials[M_id].diffuse;
     parser::Vec3f I = scene.point_lights[L_id].intensity;
-    parser::Vec3f r = scene.point_lights[L_id].position;
+    parser::Vec3f l_pos = scene.point_lights[L_id].position;
+    parser::Vec3f r_vec = subtOp(l_pos, hit_coord);
+    double r = lengthOfVector(r_vec);
 
-    parser::Vec3f E = scalarMultOp(I, 1/(r**2));
+    parser::Vec3f E = scalarMultOp(I, 1/(r*r));
     L_d.x = k_d.x * E.x;
     L_d.y = k_d.y * E.y;
     L_d.z = k_d.z * E.z;
@@ -261,19 +272,28 @@ parser::Vec3f ambient_shading(int M_id) {
     return L_a;
 }
 
-parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f n, int L_id, int M_id) {
+parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f n, int L_id, int M_id, parser::Vec3f hit_coord) {
 
     parser::Vec3f L_s;
     parser::Vec3f half_vector = normalOp(addOp(wi, wo));
-    float cos_alpha = dotProductOp(h, n);
+    float cos_alpha = dotProductOp(half_vector, normalOp(n));
+    if (cos_alpha < 0){
+        L_s.x = 0;
+        L_s.y = 0;
+        L_s.z = 0;
+        return L_s;
+    }
 
     parser::Vec3f k_s = scene.materials[M_id].specular;
     parser::Vec3f I = scene.point_lights[L_id].intensity;
-    parser::Vec3f r = scene.point_lights[L_id].position;
-    parser::Vec3f E = scalarMultOp(I, 1/(r**2));
+    parser::Vec3f l_pos = scene.point_lights[L_id].position;
+    parser::Vec3f r_vec = subtOp(l_pos, hit_coord);
+    double r = lengthOfVector(r_vec);
+    
+    parser::Vec3f E = scalarMultOp(I, 1/(r*r));
     float phong_exponent = scene.materials[M_id].phong_exponent;
 
-    cos_alpha = cos_alpha ** phong_exponent;
+    cos_alpha = pow(cos_alpha, phong_exponent);
 
     L_s.x = k_s.x * E.x;
     L_s.y = k_s.y * E.y;
@@ -282,6 +302,8 @@ parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f
 
     return L_s;
 }
+
+
 
 parser::Vec3f mirror_sth(parser::Vec3f x /*intersection point*/, parser::Vec3f wo, parser::Vec3f n, int M_id /*material_id*/) {
 
@@ -297,15 +319,16 @@ parser::Vec3f mirror_sth(parser::Vec3f x /*intersection point*/, parser::Vec3f w
 
 }
 
+
 int main(int argc, char* argv[])
 {
-    
+
     scene.loadFromXml(argv[1]);
 
     for (int cam=0; cam<scene.cameras.size(); cam++){
         ;
     }
-    
+
 
     return 0;
 }
