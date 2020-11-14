@@ -26,6 +26,10 @@ struct Color {
 };
 
 
+parser::Vec3f rayTracing(Ray ray, int maxRecDepth);
+
+
+
 // add operation for two vectors
 parser::Vec3f addOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 
@@ -131,12 +135,6 @@ parser::Vec3f clamping(parser::Vec3f L) {
 
     return L;
 }
-
-
-void rayTracing(Ray ray, Color* pixelColor) {
-
-}
-
 
 // if ray intersects with the sphere.
 // gets ray, the sphere and t(intersection point, as reference), returns bool.
@@ -304,20 +302,125 @@ parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f
 }
 
 
-
-parser::Vec3f mirror_sth(parser::Vec3f x /*intersection point*/, parser::Vec3f wo, parser::Vec3f n, int M_id /*material_id*/) {
+// n and wo must be unit vectors.
+// wo is directed from intersection point to camera.
+parser::Vec3f mirror_shading(parser::Vec3f inter_point, parser::Vec3f wo, parser::Vec3f n, int M_id, int maxRecDepth) {
 
     parser::Vec3f L_m;
     parser::Vec3f k_m = scene.materials[M_id].mirror;
+    
+    if(k_m.x == 0 && k_m.y == 0 && k_m.z == 0){
+        L_m.x = 0;
+        L_m.y = 0;
+        L_m.z = 0;
+        return L_m;
+    }
 
     parser::Vec3f wr;
-    wr = addOp(scalarMultOp(wo, -1), scalarMultOp(dotProductOp(wo, n), scalarMultOp(n, 2)));
+    wr = addOp(scalarMultOp(wo, -1), scalarMultOp(scalarMultOp(n, 2), dotProductOp(wo, n)));
 
-    Ray mirrorRay = Ray(x + scene.shadow_ray_epsilon, wr);
+    Ray mirrorRay;
+    mirrorRay.origin.x = inter_point.x + scene.shadow_ray_epsilon;
+    mirrorRay.origin.y = inter_point.y + scene.shadow_ray_epsilon;
+    mirrorRay.origin.z = inter_point.z + scene.shadow_ray_epsilon;
+    mirrorRay.direction = wr;
 
-    //to be continued..
-
+    L_m = rayTracing(mirrorRay, maxRecDepth);
+    L_m.x = k_m.x * L_m.x;
+    L_m.y = k_m.y * L_m.y;
+    L_m.z = k_m.z * L_m.z;
+    
+    return L_m;
 }
+
+// generates the shadow ray from the intersection point on object to the point light given.
+Ray generateShadowRay(parser::Vec3f intersect_point, parser::Vec3f light_position){
+    Ray theRay;
+    float eps = scene.shadow_ray_epsilon;
+    parser::Vec3f wi = normalOp(subtOp(light_position, intersect_point)); /* vector from light to inter. point. */
+    
+    theRay.origin.x = intersect_point.x + eps;
+    theRay.origin.y = intersect_point.y + eps;
+    theRay.origin.z = intersect_point.z + eps;
+    theRay.direction = wi;
+    
+    return theRay;
+}
+
+parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
+    parser::Vec3f L;
+    
+    if (maxRecDepth == 0){
+        L.x = L.y = L.z = 0;
+        return L;
+    }
+    maxRecDepth--;
+    
+    double t_min = std::numeric_limits<double>::max();
+    double t0;
+    parser::Face* tri_intersec = NULL;
+    parser::Sphere* sph_intersec = NULL;
+    parser::Vec3f intersec_point;
+    parser::Vec3f normal_vec;
+    int mat_id;
+    
+//    check intersection with spere.
+    for (int i=0; i<scene.spheres.size(); i++){
+        bool intrsct = ifSphereIntersect(ray, scene.spheres[i], t0);
+        
+        if (intrsct && t0 < t_min){
+            t_min = t0;
+            sph_intersec = &(scene.spheres[i]);
+            mat_id = scene.spheres[i].material_id;
+        }
+    }
+    
+//    check intersection with triangles.
+    for (int i=0; i<scene.triangles.size(); i++){
+        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id];
+        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id];
+        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id];
+        
+        bool intrsct = ifTriangleIntersect(ray, v0, v1, v2, t0);
+        
+        if (intrsct && t0 < t_min){
+            t_min = t0;
+            tri_intersec = &(scene.triangles[i].indices);
+            mat_id = scene.triangles[i].material_id;
+            sph_intersec = NULL;
+        }
+        
+    }
+    
+//    check intersection with meshes.
+    for (int i=0; scene.meshes.size(); i++)
+        for (int j=0; scene.meshes[i].faces.size(); j++){
+            parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id];
+            parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id];
+            parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id];
+            
+            bool intrsct = ifTriangleIntersect(ray, v0, v1, v2, t0);
+            
+            if (intrsct && t0 < t_min){
+                t_min = t0;
+                tri_intersec = &(scene.meshes[i].faces[j]);
+                mat_id = scene.meshes[i].material_id;
+                sph_intersec = NULL;
+            }
+        }
+    
+    
+//    if intersects with sphere...
+//    else if intersects with triangle...
+//    else (no intersection)
+//    in every three cases above, intersection point and normal vector should be calculated (and we may need to calculate other things as well, i dunno now). if there is intersection, first calculate the ambient shading, then check if the point is in shadow, if not, do diffuse and specular shading, then return 'L' that has these color info. if there is no intersection, just put background colors in L. bu rayTracing korayin doRayTracing koduna benziyor, ondan bakarsin. ben aslinda baska sekilde yazmayi dusunmustum ama, bolge shadow mu degil mi kontrol etmek icin bir bool donen bi fonki yazsan iyi olur aslinda. interseciton_point ve light_position input alicak, isik ile intersection_point arasinda cisim var mi kontrol edecek bool bi fonksiyon, koraydaki isWiIntersect fonksiyonunun aynisi iste.
+    
+//    rayTracing fonksiyonunda da intersectionPoint hesaplamak istersen ray'i ve t degerini kullanabilirsin.
+//    intersect_pt = ray.origin + t*ray.direction
+    
+    
+}
+
 
 
 int main(int argc, char* argv[])
