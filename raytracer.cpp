@@ -339,12 +339,52 @@ Ray generateShadowRay(parser::Vec3f intersect_point, parser::Vec3f light_positio
     float eps = scene.shadow_ray_epsilon;
     parser::Vec3f wi = normalOp(subtOp(light_position, intersect_point)); /* vector from light to inter. point. */
     
-    theRay.origin.x = intersect_point.x + eps;
-    theRay.origin.y = intersect_point.y + eps;
-    theRay.origin.z = intersect_point.z + eps;
+    theRay.origin = addOp(intersect_point, scalarMultOp(wi, eps));
     theRay.direction = wi;
     
     return theRay;
+}
+
+bool isAreaShadow(Ray shadowRay, parser::Vec3f intersec_pt, parser::Vec3f light_pos){
+    
+    double t = 0;
+    double dist_to_light = lengthOfVector(subtOp(light_pos, intersec_pt));
+    
+    for (int i=0; i<scene.spheres.size(); i++){
+        bool intrsct = ifSphereIntersect(shadowRay, scene.spheres[i], t);
+        
+        if (intrsct && t < dist_to_light)
+            return true;
+        
+    }
+    
+    for (int i=0; i<scene.triangles.size(); i++){
+        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id];
+        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id];
+        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id];
+        
+        bool intrsct = ifTriangleIntersect(shadowRay, v0, v1, v2, t);
+        
+        if (intrsct && t < dist_to_light)
+            return  true;
+        
+    }
+    
+    
+    for (int i=0; scene.meshes.size(); i++)
+    for (int j=0; scene.meshes[i].faces.size(); j++){
+        parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id];
+        parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id];
+        parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id];
+        
+        bool intrsct = ifTriangleIntersect(shadowRay, v0, v1, v2, t);
+        
+        if (intrsct && t < dist_to_light)
+            return true;
+        
+    }
+    
+    return false;
 }
 
 parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
@@ -362,7 +402,7 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
     parser::Sphere* sph_intersec = NULL;
     parser::Vec3f intersec_point;
     parser::Vec3f normal_vec;
-    int mat_id;
+    int mat_id = 0;
     
 //    check intersection with spere.
     for (int i=0; i<scene.spheres.size(); i++){
@@ -393,8 +433,10 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
     }
     
 //    check intersection with meshes.
-    for (int i=0; scene.meshes.size(); i++)
-        for (int j=0; scene.meshes[i].faces.size(); j++){
+//    std::cout << scene.meshes.size() << std::endl;
+    for (int i=0; i < scene.meshes.size(); i++){
+        for (int j=0; j < scene.meshes[i].faces.size(); j++){
+            
             parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id];
             parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id];
             parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id];
@@ -407,17 +449,74 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
                 mat_id = scene.meshes[i].material_id;
                 sph_intersec = NULL;
             }
+            
         }
+    }
     
+    if (sph_intersec != NULL && tri_intersec == NULL){
+        L = ambient_shading(mat_id);
+        normal_vec = normalOp(subtOp(intersec_point, scene.vertex_data[sph_intersec->center_vertex_id]));
+        parser::Vec3f wo = normalOp(subtOp(ray.origin, intersec_point));
+        
+        for (int i=0; i<scene.point_lights.size(); i++){
+            intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
+            Ray shadowRay = generateShadowRay(intersec_point, scene.point_lights[i].position);
+
+            if (isAreaShadow(shadowRay, intersec_point, scene.point_lights[i].position)){
+                continue;
+            }else{
+                parser::Vec3f L_s, L_d;
+                parser::Vec3f wi = normalOp(subtOp(scene.point_lights[i].position, intersec_point));
+                
+                L_d = diffuse_shading(wi, normal_vec, i, mat_id, intersec_point);
+                L_s = specular_shading(wi, wo, normal_vec, i, mat_id, intersec_point);
+                
+                L = addOp(L, addOp(L_s, L_d));
+            }
+            
+        }
+        
+        L = addOp(L, mirror_shading(intersec_point, wo, normal_vec, mat_id, maxRecDepth));
+        
+        
+    }else if (sph_intersec == NULL && tri_intersec != NULL){
+        L = ambient_shading(mat_id);
+        parser::Vec3f wo = normalOp(subtOp(ray.origin, intersec_point));
+        parser::Vec3f v0 = scene.vertex_data[tri_intersec->v0_id];
+        parser::Vec3f v1 = scene.vertex_data[tri_intersec->v1_id];
+        parser::Vec3f v2 = scene.vertex_data[tri_intersec->v2_id];
+        parser::Vec3f v0v1 = subtOp(v1, v0);
+        parser::Vec3f v0v2 = subtOp(v2, v0);
+        normal_vec = crossProductOp(v0v1, v0v2);
+        
+        for (int i=0; i<scene.point_lights.size(); i++){
+            intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
+            Ray shadowRay = generateShadowRay(intersec_point, scene.point_lights[i].position);
+            
+            if (isAreaShadow(shadowRay, intersec_point, scene.point_lights[i].position)){
+                continue;
+            }else{
+                parser::Vec3f L_s, L_d;
+                parser::Vec3f wi = normalOp(subtOp(scene.point_lights[i].position, intersec_point));
+                
+                L_d = diffuse_shading(wi, normal_vec, i, mat_id, intersec_point);
+                L_s = specular_shading(wi, wo, normal_vec, i, mat_id, intersec_point);
+                
+                L = addOp(L, addOp(L_s, L_d));
+            }
+            
+        }
+        
+        L = addOp(L, mirror_shading(intersec_point, wo, normal_vec, mat_id, maxRecDepth));
+        
+        
+    }else{
+        L.x = scene.background_color.x;
+        L.y = scene.background_color.y;
+        L.z = scene.background_color.z;
+    }
     
-//    if intersects with sphere...
-//    else if intersects with triangle...
-//    else (no intersection)
-//    in every three cases above, intersection point and normal vector should be calculated (and we may need to calculate other things as well, i dunno now). if there is intersection, first calculate the ambient shading, then check if the point is in shadow, if not, do diffuse and specular shading, then return 'L' that has these color info. if there is no intersection, just put background colors in L. bu rayTracing korayin doRayTracing koduna benziyor, ondan bakarsin. ben aslinda baska sekilde yazmayi dusunmustum ama, bolge shadow mu degil mi kontrol etmek icin bir bool donen bi fonki yazsan iyi olur aslinda. interseciton_point ve light_position input alicak, isik ile intersection_point arasinda cisim var mi kontrol edecek bool bi fonksiyon, koraydaki isWiIntersect fonksiyonunun aynisi iste.
-    
-//    rayTracing fonksiyonunda da intersectionPoint hesaplamak istersen ray'i ve t degerini kullanabilirsin.
-//    intersect_pt = ray.origin + t*ray.direction
-    
+    return L;
     
 }
 
@@ -429,7 +528,25 @@ int main(int argc, char* argv[])
     scene.loadFromXml(argv[1]);
 
     for (int cam=0; cam<scene.cameras.size(); cam++){
-        ;
+        
+        int k=0;
+        unsigned char* image = new unsigned char [scene.cameras[cam].image_width * scene.cameras[cam].image_height * 3];
+        
+        for (int i=0; i<scene.cameras[cam].image_height; i++){
+            for (int j=0; j<scene.cameras[cam].image_width; j++){
+                Ray theRay = generateRay(i, j, cam);
+                parser::Vec3f pix_color = rayTracing(theRay, scene.max_recursion_depth+1);
+                pix_color = clamping(pix_color);
+                
+                image[k++] = pix_color.x;
+                image[k++] = pix_color.y;
+                image[k++] = pix_color.z;
+                
+            }
+        }
+        
+        write_ppm(scene.cameras[cam].image_name.c_str(), image, scene.cameras[cam].image_width, scene.cameras[cam].image_height);
+        
     }
 
 
