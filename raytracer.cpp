@@ -3,9 +3,9 @@
 #include "ppm.h"
 #include "math.h"
 
-#define EPSILON 0.0001
-
 parser::Scene scene;
+
+//float EPSILON = scene.shadow_ray_epsilon;
 
 struct Ray {
     parser::Vec3f origin;
@@ -55,7 +55,7 @@ parser::Vec3f subtOp(parser::Vec3f vect, parser::Vec3f otherVect) {
 }
 
 // scalar multiplication operation with a vector and a constant
-parser::Vec3f scalarMultOp(parser::Vec3f vect, float num) {
+parser::Vec3f scalarMultOp(parser::Vec3f vect, double num) {
 
     parser::Vec3f result;
 
@@ -140,13 +140,15 @@ parser::Vec3f clamping(parser::Vec3f L) {
 // gets ray, the sphere and t(intersection point, as reference), returns bool.
 bool ifSphereIntersect(Ray ray, parser::Sphere sphere, double& t){
     parser::Vec3f o = ray.origin;
-    parser::Vec3f d = normalOp(ray.direction);
-    parser::Vec3f center = scene.vertex_data[sphere.center_vertex_id];
+    parser::Vec3f d = ray.direction;
+    parser::Vec3f center = scene.vertex_data[sphere.center_vertex_id-1];
     float r = sphere.radius;
     parser::Vec3f L = subtOp(center, o);
     double t_ca = dotProductOp(L, d);
+//    float EPSILON = scene.shadow_ray_epsilon;
 
-    if (t_ca < EPSILON) return false;
+//    if (t_ca < EPSILON) return false;
+    if (t_ca < 0) return false;
 
     double d_squared = dotProductOp(L, L) - t_ca * t_ca;
 
@@ -168,13 +170,16 @@ bool ifTriangleIntersect(Ray ray, parser::Vec3f v_0, parser::Vec3f v_1, parser::
     parser::Vec3f v0v2 = subtOp(v_2, v_0);
     parser::Vec3f dirxside = crossProductOp(ray.direction, v0v2);
     double determinant = dotProductOp(v0v1, dirxside);
+    double EPSILON = 0.0000001;
 
 //    negative determinant => triangle is backfacing
-    if (determinant < EPSILON) return false;
+//    if (determinant < EPSILON) return false;
 //    if the determinant is close to 0, the ray misses the triangle
-    if (fabs(determinant) < EPSILON) return false;
+//    if (fabs(determinant) < EPSILON) return false;
+    
+    if (determinant > -EPSILON && determinant < EPSILON) return false;
 
-    double inv_determinant = 1/determinant;
+    double inv_determinant = 1.0/determinant;
 
     parser::Vec3f v0_to_o = subtOp(ray.origin, v_0);
     double gamma = dotProductOp(v0_to_o, dirxside) * inv_determinant;
@@ -198,23 +203,25 @@ bool ifTriangleIntersect(Ray ray, parser::Vec3f v_0, parser::Vec3f v_1, parser::
 // func to generate ray from camera to any pixel given.
 Ray generateRay(int i, int j, int camera_index){
     Ray theRay;
-    parser::Vec3f e = scene.cameras[camera_index].position;
-    parser::Vec3f v = scene.cameras[camera_index].up;
-    parser::Vec3f w = scalarMultOp(scene.cameras[camera_index].gaze, -1.0);
+    parser::Camera camera = scene.cameras[camera_index];
+    
+    parser::Vec3f e = camera.position;
+    parser::Vec3f v = camera.up;
+    parser::Vec3f w = scalarMultOp(camera.gaze, -1.0);
     parser::Vec3f u = crossProductOp(w, v);
 //    burada x,y,z,w'nin hangisi left, right, bottom ve top olduguna pdf'e gore karar verdim ins dogrudur.
-    float l = scene.cameras[camera_index].near_plane.x, r = scene.cameras[camera_index].near_plane.y;
-    float b = scene.cameras[camera_index].near_plane.z, t = scene.cameras[camera_index].near_plane.w;
+    float l = camera.near_plane.x, r = camera.near_plane.y;
+    float b = camera.near_plane.z, t = camera.near_plane.w;
 
-    parser::Vec3f minus_w_dist = scalarMultOp(w, scene.cameras[camera_index].near_distance * -1.0);
+    parser::Vec3f minus_w_dist = scalarMultOp(w, camera.near_distance * -1.0);
     parser::Vec3f m = addOp(e, minus_w_dist);
 
     parser::Vec3f lu = scalarMultOp(u, l);
     parser::Vec3f tv = scalarMultOp(v, t);
     parser::Vec3f q = addOp(m, addOp(lu, tv));
 
-    double s_u = (i+0.5)*((r-l)/scene.cameras[camera_index].image_width);
-    double s_v = (j+0.5)*((t-b)/scene.cameras[camera_index].image_height);
+    double s_u = ((double)i+0.5)*((r-l)/camera.image_width);
+    double s_v = ((double)j+0.5)*((t-b)/camera.image_height);
     parser::Vec3f s_uxu = scalarMultOp(u, s_u);
     parser::Vec3f min_s_vxv = scalarMultOp(v, -1.0 * s_v);
     parser::Vec3f s = addOp(q, addOp(s_uxu, min_s_vxv));
@@ -222,6 +229,8 @@ Ray generateRay(int i, int j, int camera_index){
     parser::Vec3f d = subtOp(s, e);
     theRay.origin = e;
     theRay.direction = normalOp(d);
+//    std::cout << theRay.direction.x << "," << theRay.direction.y << "," << theRay.direction.z << "---";
+//    std::cout << d.x << "," << d.y << "," << d.z << "---";
 
     return theRay;
 }
@@ -231,10 +240,10 @@ Ray generateRay(int i, int j, int camera_index){
                                     // wi is defined from the surface to the light
 // hit_coord is the 3D coordinate on the surface where we operate on (x in slides). It can be computed, hopefully, using
 // the main ray and t.
-parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M_id, parser::Vec3f hit_coord) {
+parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f normal, int L_index, int M_id, parser::Vec3f hit_coord) {
 
     parser::Vec3f L_d;
-    float cos_theta = dotProductOp(normalOp(wi), normalOp(n));
+    float cos_theta = dotProductOp(wi, normal);
     if (cos_theta < 0){
         L_d.x = 0;
         L_d.y = 0;
@@ -242,9 +251,9 @@ parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M
         return L_d;
     }
     
-    parser::Vec3f k_d = scene.materials[M_id].diffuse;
-    parser::Vec3f I = scene.point_lights[L_id].intensity;
-    parser::Vec3f l_pos = scene.point_lights[L_id].position;
+    parser::Vec3f k_d = scene.materials[M_id-1].diffuse;
+    parser::Vec3f I = scene.point_lights[L_index].intensity;
+    parser::Vec3f l_pos = scene.point_lights[L_index].position;
     parser::Vec3f r_vec = subtOp(l_pos, hit_coord);
     double r = lengthOfVector(r_vec);
 
@@ -260,7 +269,7 @@ parser::Vec3f diffuse_shading(parser::Vec3f wi, parser::Vec3f n, int L_id, int M
 parser::Vec3f ambient_shading(int M_id) {
 
     parser::Vec3f L_a;
-    parser::Vec3f k_a = scene.materials[M_id].ambient;
+    parser::Vec3f k_a = scene.materials[M_id-1].ambient;
     parser::Vec3f I_a = scene.ambient_light;
 
     L_a.x = k_a.x * I_a.x;
@@ -270,11 +279,11 @@ parser::Vec3f ambient_shading(int M_id) {
     return L_a;
 }
 
-parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f n, int L_id, int M_id, parser::Vec3f hit_coord) {
+parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f n, int L_index, int M_id, parser::Vec3f hit_coord) {
 
     parser::Vec3f L_s;
     parser::Vec3f half_vector = normalOp(addOp(wi, wo));
-    float cos_alpha = dotProductOp(half_vector, normalOp(n));
+    float cos_alpha = dotProductOp(half_vector, n);
     if (cos_alpha < 0){
         L_s.x = 0;
         L_s.y = 0;
@@ -282,14 +291,14 @@ parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f
         return L_s;
     }
 
-    parser::Vec3f k_s = scene.materials[M_id].specular;
-    parser::Vec3f I = scene.point_lights[L_id].intensity;
-    parser::Vec3f l_pos = scene.point_lights[L_id].position;
+    parser::Vec3f k_s = scene.materials[M_id-1].specular;
+    parser::Vec3f I = scene.point_lights[L_index].intensity;
+    parser::Vec3f l_pos = scene.point_lights[L_index].position;
     parser::Vec3f r_vec = subtOp(l_pos, hit_coord);
     double r = lengthOfVector(r_vec);
     
     parser::Vec3f E = scalarMultOp(I, 1/(r*r));
-    float phong_exponent = scene.materials[M_id].phong_exponent;
+    float phong_exponent = scene.materials[M_id-1].phong_exponent;
 
     cos_alpha = pow(cos_alpha, phong_exponent);
 
@@ -307,7 +316,7 @@ parser::Vec3f specular_shading(parser::Vec3f wi, parser::Vec3f wo, parser::Vec3f
 parser::Vec3f mirror_shading(parser::Vec3f inter_point, parser::Vec3f wo, parser::Vec3f n, int M_id, int maxRecDepth) {
 
     parser::Vec3f L_m;
-    parser::Vec3f k_m = scene.materials[M_id].mirror;
+    parser::Vec3f k_m = scene.materials[M_id-1].mirror;
     
     if(k_m.x == 0 && k_m.y == 0 && k_m.z == 0){
         L_m.x = 0;
@@ -359,9 +368,9 @@ bool isAreaShadow(Ray shadowRay, parser::Vec3f intersec_pt, parser::Vec3f light_
     }
     
     for (int i=0; i<scene.triangles.size(); i++){
-        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id];
-        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id];
-        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id];
+        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id-1];
+        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id-1];
+        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id-1];
         
         bool intrsct = ifTriangleIntersect(shadowRay, v0, v1, v2, t);
         
@@ -373,9 +382,9 @@ bool isAreaShadow(Ray shadowRay, parser::Vec3f intersec_pt, parser::Vec3f light_
     
     for (int i=0; scene.meshes.size(); i++)
     for (int j=0; scene.meshes[i].faces.size(); j++){
-        parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id];
-        parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id];
-        parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id];
+        parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id-1];
+        parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id-1];
+        parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id-1];
         
         bool intrsct = ifTriangleIntersect(shadowRay, v0, v1, v2, t);
         
@@ -397,7 +406,7 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
     maxRecDepth--;
     
     double t_min = std::numeric_limits<double>::max();
-    double t0;
+    double t0 = 0.0f;
     parser::Face* tri_intersec = NULL;
     parser::Sphere* sph_intersec = NULL;
     parser::Vec3f intersec_point;
@@ -417,9 +426,9 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
     
 //    check intersection with triangles.
     for (int i=0; i<scene.triangles.size(); i++){
-        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id];
-        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id];
-        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id];
+        parser::Vec3f v0 = scene.vertex_data[scene.triangles[i].indices.v0_id-1];
+        parser::Vec3f v1 = scene.vertex_data[scene.triangles[i].indices.v1_id-1];
+        parser::Vec3f v2 = scene.vertex_data[scene.triangles[i].indices.v2_id-1];
         
         bool intrsct = ifTriangleIntersect(ray, v0, v1, v2, t0);
         
@@ -437,9 +446,9 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
     for (int i=0; i < scene.meshes.size(); i++){
         for (int j=0; j < scene.meshes[i].faces.size(); j++){
             
-            parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id];
-            parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id];
-            parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id];
+            parser::Vec3f v0 = scene.vertex_data[scene.meshes[i].faces[j].v0_id-1];
+            parser::Vec3f v1 = scene.vertex_data[scene.meshes[i].faces[j].v1_id-1];
+            parser::Vec3f v2 = scene.vertex_data[scene.meshes[i].faces[j].v2_id-1];
             
             bool intrsct = ifTriangleIntersect(ray, v0, v1, v2, t0);
             
@@ -453,13 +462,15 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
         }
     }
     
+    
     if (sph_intersec != NULL && tri_intersec == NULL){
         L = ambient_shading(mat_id);
-        normal_vec = normalOp(subtOp(intersec_point, scene.vertex_data[sph_intersec->center_vertex_id]));
+        intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
+        normal_vec = normalOp(subtOp(intersec_point, scene.vertex_data[sph_intersec->center_vertex_id-1]));
         parser::Vec3f wo = normalOp(subtOp(ray.origin, intersec_point));
         
         for (int i=0; i<scene.point_lights.size(); i++){
-            intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
+            
             Ray shadowRay = generateShadowRay(intersec_point, scene.point_lights[i].position);
 
             if (isAreaShadow(shadowRay, intersec_point, scene.point_lights[i].position)){
@@ -480,17 +491,19 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
         
         
     }else if (sph_intersec == NULL && tri_intersec != NULL){
+        
         L = ambient_shading(mat_id);
+        intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
         parser::Vec3f wo = normalOp(subtOp(ray.origin, intersec_point));
-        parser::Vec3f v0 = scene.vertex_data[tri_intersec->v0_id];
-        parser::Vec3f v1 = scene.vertex_data[tri_intersec->v1_id];
-        parser::Vec3f v2 = scene.vertex_data[tri_intersec->v2_id];
+        parser::Vec3f v0 = scene.vertex_data[tri_intersec->v0_id-1];
+        parser::Vec3f v1 = scene.vertex_data[tri_intersec->v1_id-1];
+        parser::Vec3f v2 = scene.vertex_data[tri_intersec->v2_id-1];
         parser::Vec3f v0v1 = subtOp(v1, v0);
         parser::Vec3f v0v2 = subtOp(v2, v0);
-        normal_vec = crossProductOp(v0v1, v0v2);
+        normal_vec = normalOp(crossProductOp(v0v1, v0v2));
         
         for (int i=0; i<scene.point_lights.size(); i++){
-            intersec_point = addOp(ray.origin, scalarMultOp(ray.direction, t_min));
+            
             Ray shadowRay = generateShadowRay(intersec_point, scene.point_lights[i].position);
             
             if (isAreaShadow(shadowRay, intersec_point, scene.point_lights[i].position)){
@@ -511,9 +524,10 @@ parser::Vec3f rayTracing(Ray ray, int maxRecDepth) {
         
         
     }else{
-        L.x = scene.background_color.x;
-        L.y = scene.background_color.y;
-        L.z = scene.background_color.z;
+//        L.x = scene.background_color.x;
+//        L.y = scene.background_color.y;
+//        L.z = scene.background_color.z;
+        L.x = 0; L.y = 255; L.z = 0;
     }
     
     return L;
@@ -528,27 +542,28 @@ int main(int argc, char* argv[])
     scene.loadFromXml(argv[1]);
 
     for (int cam=0; cam<scene.cameras.size(); cam++){
-        
+
         int k=0;
         unsigned char* image = new unsigned char [scene.cameras[cam].image_width * scene.cameras[cam].image_height * 3];
-        
+
         for (int i=0; i<scene.cameras[cam].image_height; i++){
             for (int j=0; j<scene.cameras[cam].image_width; j++){
                 Ray theRay = generateRay(i, j, cam);
                 parser::Vec3f pix_color = rayTracing(theRay, scene.max_recursion_depth+1);
+                std::cout << "x";
                 pix_color = clamping(pix_color);
-                
+                std::cout << "y";
                 image[k++] = pix_color.x;
                 image[k++] = pix_color.y;
                 image[k++] = pix_color.z;
-                
+
             }
         }
-        
-        write_ppm(scene.cameras[cam].image_name.c_str(), image, scene.cameras[cam].image_width, scene.cameras[cam].image_height);
-        
-    }
 
+        write_ppm(scene.cameras[cam].image_name.c_str(), image, scene.cameras[cam].image_width, scene.cameras[cam].image_height);
+
+    }
+    
 
     return 0;
 }
